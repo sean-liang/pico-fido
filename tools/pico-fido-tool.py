@@ -478,7 +478,7 @@ class Vendor:
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
-    parser.add_argument('-p','--pin', help='Specify the PIN of the device.', required=True)
+    parser.add_argument('-p','--pin', help='Specify the PIN of the device.', required=False)
     parser_secure = subparser.add_parser('secure', help='Manages security of Pico Fido.')
     parser_secure.add_argument('subcommand', choices=['enable', 'disable', 'unlock'], help='Enables, disables or unlocks the security.')
 
@@ -502,6 +502,11 @@ def parse_args():
     parser_phy_ledbtness.add_argument('value', help='Value of the max. brightness.', metavar='VAL', nargs='?')
     parser_phy_optdimm = subparser_phy.add_parser('led_dimmable', help='Enable/Disable LED dimming.')
     parser_phy_optdimm.add_argument('value', choices=['enable', 'disable'], help='Enable/Disable LED dimming.', nargs='?')
+
+    parser_pin = subparser.add_parser('pin', help='Manages PIN of Pico Fido.')
+    parser_pin.add_argument('subcommand', choices=['set', 'change'], help='Sets or changes PIN.')
+    parser_pin.add_argument('new_pin', help='New PIN to set.')
+    parser_pin.add_argument('--current-pin', help='Current PIN (required for change)', required=False)
 
     args = parser.parse_args()
     return args
@@ -560,6 +565,27 @@ def phy(vdr, args):
     else:
         print('Command executed successfully. Please, restart your Pico Key.')
 
+def pin(ctap, args):
+    client_pin = ClientPin(ctap)
+    try:
+        if args.subcommand == 'set':
+            client_pin.set_pin(args.new_pin)
+            print('PIN set successfully')
+        elif args.subcommand == 'change':
+            if not args.current_pin:
+                print('ERROR: Current PIN is required for changing PIN')
+                return
+            client_pin.change_pin(args.current_pin, args.new_pin)
+            print('PIN changed successfully')
+    except CtapError as e:
+        if e.code == CtapError.ERR.PIN_INVALID:
+            print('Error: Invalid PIN')
+        elif e.code == CtapError.ERR.PIN_AUTH_BLOCKED:
+            print('Error: PIN authentication is currently blocked. Please wait.')
+        else:
+            print(f'Error: {str(e)}')
+    except Exception as e:
+        print(f'Error: {str(e)}')
 
 def main(args):
     print('Pico Fido Tool v1.8')
@@ -570,18 +596,28 @@ def main(args):
 
     dev = next(CtapHidDevice.list_devices(), None)
     ctap = Ctap2Vendor(dev)
-    client_pin = ClientPin(ctap)
-    token = client_pin.get_pin_token(args.pin, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG)
-    vdr = Vendor(ctap, pin_uv_protocol=PinProtocolV2(), pin_uv_token=token)
-
-    if (args.command == 'secure'):
-        secure(vdr, args)
-    elif (args.command == 'backup'):
-        backup(vdr, args)
-    elif (args.command == 'attestation'):
-        attestation(vdr, args)
-    elif (args.command == 'phy'):
-        phy(vdr, args)
+    
+    if args.command == 'pin':
+        pin(ctap, args)
+        return
+        
+    if args.pin:
+        client_pin = ClientPin(ctap)
+        token = client_pin.get_pin_token(args.pin, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG)
+        vdr = Vendor(ctap, pin_uv_protocol=PinProtocolV2(), pin_uv_token=token)
+    
+        if args.command == 'secure':
+            secure(vdr, args)
+        elif args.command == 'backup':
+            backup(vdr, args)
+        elif args.command == 'attestation':
+            attestation(vdr, args)
+        elif args.command == 'phy':
+            phy(vdr, args)
+    else:
+        if args.command not in ['pin']:
+            print('ERROR: PIN is required for this command')
+            sys.exit(1)
 
 def run():
     args = parse_args()
