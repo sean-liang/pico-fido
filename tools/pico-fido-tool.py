@@ -508,6 +508,9 @@ def parse_args():
     parser_pin.add_argument('new_pin', help='New PIN to set.')
     parser_pin.add_argument('--current-pin', help='Current PIN (required for change)', required=False)
 
+    parser_reset = subparser.add_parser('reset', help='重置设备,擦除所有凭证和 PIN')
+    parser_reset.add_argument('--force', action='store_true', help='强制重置,不提示确认')
+
     args = parser.parse_args()
     return args
 
@@ -587,6 +590,27 @@ def pin(ctap, args):
     except Exception as e:
         print(f'Error: {str(e)}')
 
+def reset(ctap, args):
+    """重置设备,擦除所有凭证和 PIN"""
+    if not args.force:
+        confirm = input('警告: 这将擦除所有凭证和 PIN。输入 "RESET" 确认: ')
+        if confirm != "RESET":
+            print('已取消重置')
+            return
+            
+    try:
+        ctap.reset()
+        print('设备已成功重置')
+    except CtapError as e:
+        if e.code == CtapError.ERR.NOT_ALLOWED:
+            print('错误: 设备不允许重置。请确保没有用户在场。')
+        elif e.code == CtapError.ERR.PIN_AUTH_BLOCKED:
+            print('错误: PIN 认证当前被锁定。请稍后再试。')
+        else:
+            print(f'错误: {str(e)}')
+    except Exception as e:
+        print(f'错误: {str(e)}')
+
 def main(args):
     print('Pico Fido Tool v1.8')
     print('Author: Pol Henarejos')
@@ -600,23 +624,46 @@ def main(args):
     if args.command == 'pin':
         pin(ctap, args)
         return
+    elif args.command == 'reset':
+        reset(ctap, args)
+        return
         
     if args.pin:
         client_pin = ClientPin(ctap)
-        token = client_pin.get_pin_token(args.pin, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG)
-        vdr = Vendor(ctap, pin_uv_protocol=PinProtocolV2(), pin_uv_token=token)
-    
-        if args.command == 'secure':
-            secure(vdr, args)
-        elif args.command == 'backup':
-            backup(vdr, args)
-        elif args.command == 'attestation':
-            attestation(vdr, args)
-        elif args.command == 'phy':
-            phy(vdr, args)
+        permissions = (ClientPin.PERMISSION.AUTHENTICATOR_CFG | 
+                      ClientPin.PERMISSION.CREDENTIAL_MGMT |
+                      ClientPin.PERMISSION.BIO_ENROLL |
+                      ClientPin.PERMISSION.MAKE_CREDENTIAL |
+                      ClientPin.PERMISSION.GET_ASSERTION |
+                      ClientPin.PERMISSION.LARGE_BLOB_WRITE)
+        try:
+            token = client_pin.get_pin_token(args.pin, permissions=permissions)
+            vdr = Vendor(ctap, pin_uv_protocol=PinProtocolV2(), pin_uv_token=token)
+        
+            if args.command == 'secure':
+                secure(vdr, args)
+            elif args.command == 'backup':
+                backup(vdr, args)
+            elif args.command == 'attestation':
+                attestation(vdr, args)
+            elif args.command == 'phy':
+                phy(vdr, args)
+        except CtapError as e:
+            if e.code == CtapError.ERR.PIN_INVALID:
+                print('错误: PIN 无效')
+            elif e.code == CtapError.ERR.PIN_AUTH_BLOCKED:
+                print('错误: PIN 认证已被锁定。请等待一段时间后重试。')
+            elif e.code == CtapError.ERR.PIN_AUTH_INVALID:
+                print('错误: PIN 认证无效。请确保 PIN 正确且有足够权限。')
+            else:
+                print(f'错误: {str(e)}')
+            sys.exit(1)
+        except Exception as e:
+            print(f'错误: {str(e)}')
+            sys.exit(1)
     else:
-        if args.command not in ['pin']:
-            print('ERROR: PIN is required for this command')
+        if args.command not in ['pin', 'reset']:
+            print('错误: 此命令需要 PIN')
             sys.exit(1)
 
 def run():

@@ -118,6 +118,62 @@ python pico-fido-tool.py --set-pin <PIN>
 python pico-fido-tool.py --set-pin 123456
 ```
 
+#### 6. PIN 操作
+```bash
+python pico-fido-tool.py pin <子命令>
+```
+可用子命令：
+- `set`: 设置新的设备 PIN
+- `change`: 更改现有的设备 PIN
+
+示例：
+```bash
+# 设置新的设备 PIN
+python pico-fido-tool.py pin set --new-pin 654321
+
+# 更改现有的设备 PIN
+python pico-fido-tool.py pin change --current-pin 123456 --new-pin 654321
+```
+
+#### 7. 重置设备
+
+重置命令会擦除设备上的所有凭证和 PIN。使用此命令时要格外小心。
+
+```bash
+# 重置设备(会提示确认)
+python pico-fido-tool.py reset
+
+# 强制重置设备(不提示确认)
+python pico-fido-tool.py reset --force
+```
+
+注意事项:
+1. 重置后所有存储的凭证和 PIN 将被永久删除
+2. 重置需要物理接触设备(通常需要按住按钮)
+3. 重置后需要重新设置 PIN 和重新注册凭证
+4. 建议在重置前备份重要数据
+
+示例输出:
+```bash
+# 普通重置
+$ python pico-fido-tool.py reset
+警告: 这将擦除所有凭证和 PIN。输入 "RESET" 确认: RESET
+设备已成功重置
+
+# 取消重置
+$ python pico-fido-tool.py reset
+警告: 这将擦除所有凭证和 PIN。输入 "RESET" 确认: no
+已取消重置
+
+# 强制重置
+$ python pico-fido-tool.py reset --force
+设备已成功重置
+```
+
+可能的错误:
+- "错误: 设备不允许重置。请确保没有用户在场。" - 需要按住设备按钮
+- "错误: PIN 认证当前被锁定。请稍后再试。" - 等待一段时间后重试
+
 ## 常用 VID/PID 参考表
 
 以下是一些常用的 VID/PID 组合及其对应的设置命令。请注意，在使用这些值时应确保它们不会与其他设备冲突。
